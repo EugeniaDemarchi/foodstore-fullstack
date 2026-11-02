@@ -4,9 +4,9 @@
 
 Food ordering management system: product catalog (categories, products, ingredients), orders, and user management with role-based access.
 
-**Backend:** Python · FastAPI · SQLModel · PostgreSQL · JWT (HttpOnly cookie) · pytest
-**Frontend:** React 19 · TypeScript · Vite · Tailwind CSS · TanStack Query / Form / Table · Zustand · Axios
-**Infra:** Docker · Docker Compose · GitHub Actions
+- **Backend:** Python · FastAPI · SQLModel · PostgreSQL · JWT (HttpOnly cookie) · pytest
+- **Frontend:** React 19 · TypeScript · Vite · Tailwind CSS · TanStack Query / Form / Table · Zustand · Axios
+- **Infra:** Docker · Docker Compose · GitHub Actions
 
 ## Highlights
 
