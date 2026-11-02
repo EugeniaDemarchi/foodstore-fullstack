@@ -1,0 +1,199 @@
+# ═══════════════════════════════════════════════════════════════════════
+# TP 9 — Pruebas de seguridad (extensión REST Client de VS Code)
+# ═══════════════════════════════════════════════════════════════════════
+# Cómo usarlo:
+#   1. Backend corriendo:  .venv\Scripts\python.exe -m uvicorn app.main:app --reload
+#   2. Clic en "Send Request" sobre cada bloque, EN ORDEN.
+#
+# REST Client guarda las cookies como un navegador: después del login,
+# la cookie access_token viaja sola en los pedidos siguientes.
+# Para cambiar de usuario: hacer logout (o login con otro usuario).
+#
+# Usuarios del seed:  admin / Admin1234!  (rol admin)
+#                     juan  / Juan1234!   (rol user)
+
+@base = http://localhost:8000
+@auth = {{base}}/api/v1/auth
+
+
+### ─── 0. Empezar sin sesión ─────────────────────────────────────────
+POST {{auth}}/logout
+
+
+### 1. Sin sesión, /me -> 401 "No autenticado"
+GET {{auth}}/me
+
+
+### 2. Sin sesión, leer categorías -> 401 (RN-07: lectura solo con sesión)
+GET {{base}}/categorias/
+
+
+### ─── REGISTRO (HU-01) ──────────────────────────────────────────────
+
+### 3. Registro OK -> 201, rol "user", SIN contraseña en la respuesta
+POST {{auth}}/register
+Content-Type: application/json
+
+{
+  "username": "eugenia",
+  "full_name": "Eugenia Demarchi",
+  "email": "eugenia@foodstore.com",
+  "password": "Clave1234"
+}
+
+
+### 4. Intentar registrarse como admin -> 201, pero queda "user" (RN-08)
+POST {{auth}}/register
+Content-Type: application/json
+
+{
+  "username": "pirata",
+  "full_name": "Usuario Pícaro",
+  "email": "pirata@foodstore.com",
+  "password": "Clave1234",
+  "role": "admin"
+}
+
+
+### 5. Usuario repetido -> 409 (RN-02)
+POST {{auth}}/register
+Content-Type: application/json
+
+{
+  "username": "eugenia",
+  "full_name": "Otra",
+  "email": "otra@foodstore.com",
+  "password": "Clave1234"
+}
+
+
+### 6. Email inválido y contraseña corta -> 422 (RN-09)
+POST {{auth}}/register
+Content-Type: application/json
+
+{
+  "username": "malformado",
+  "full_name": "X",
+  "email": "esto-no-es-un-email",
+  "password": "123"
+}
+
+
+### ─── LOGIN COMO USER (HU-02) ───────────────────────────────────────
+
+### 7. Contraseña incorrecta -> 401 "Credenciales incorrectas"
+POST {{auth}}/token
+Content-Type: application/x-www-form-urlencoded
+
+username=juan&password=equivocada
+
+
+### 8. Login OK -> 200. Mirar la respuesta: el token NO está en el cuerpo,
+###    viene en el encabezado Set-Cookie: access_token=...; HttpOnly
+POST {{auth}}/token
+Content-Type: application/x-www-form-urlencoded
+
+username=juan&password=Juan1234!
+
+
+### 9. /me con la cookie -> 200 con los datos de juan
+GET {{auth}}/me
+
+
+### 10. user LEE categorías -> 200
+GET {{base}}/categorias/
+
+
+### 11. user intenta CREAR categoría -> 403 (RN-04)
+POST {{base}}/categorias/
+Content-Type: application/json
+
+{
+  "nombre": "Categoría prohibida",
+  "descripcion": "juan no puede crearla"
+}
+
+
+### 12. user intenta BORRAR un ingrediente -> 403
+DELETE {{base}}/ingredientes/1
+
+
+### 13. user CREA un pedido -> 201 (RN-05). Necesita un producto activo con id 1.
+POST {{base}}/pedidos/
+Content-Type: application/json
+
+{
+  "detalles": [
+    { "producto_id": 1, "cantidad": 2 }
+  ]
+}
+
+
+### 14. user entra a la administración de usuarios -> 403
+GET {{auth}}/admin/usuarios
+
+
+### ─── LOGOUT (HU-03) ────────────────────────────────────────────────
+
+### 15. Logout -> 200 + Set-Cookie que borra access_token
+POST {{auth}}/logout
+
+
+### 16. Después del logout, /me -> 401
+GET {{auth}}/me
+
+
+### 17. Token VÁLIDO mandado por encabezado Bearer -> 401: SOLO se acepta la cookie (RN-03)
+###      Copiar el valor de access_token del Set-Cookie de la respuesta del paso 8
+###      (lo que está entre "access_token=" y el primer ";") y pegarlo después de Bearer.
+###      @no-cookie-jar: este pedido NO manda las cookies guardadas, así se prueba
+###      SOLO el encabezado (si no, la cookie de la sesión actual daría 200).
+# @no-cookie-jar
+GET {{auth}}/me
+Authorization: Bearer PEGAR_ACA_EL_TOKEN
+
+
+### ─── LOGIN COMO ADMIN ──────────────────────────────────────────────
+
+### 18. Login admin
+POST {{auth}}/token
+Content-Type: application/x-www-form-urlencoded
+
+username=admin&password=Admin1234!
+
+
+### 19. admin crea una categoría -> 201
+POST {{base}}/categorias/
+Content-Type: application/json
+
+{
+  "nombre": "Categoría de prueba TP9",
+  "descripcion": "creada por admin"
+}
+
+
+### 20. Catálogo de solo lectura: POST a unidades de medida -> 405 (RN-06)
+POST {{base}}/unidades-medida/
+Content-Type: application/json
+
+{}
+
+
+### 21. admin lista usuarios -> 200
+GET {{auth}}/admin/usuarios
+
+
+### 22. admin DESACTIVA a juan (id 2) -> 200 con "disabled": true (RN-11)
+POST {{auth}}/admin/usuarios/2/desactivar
+
+
+### 23. juan desactivado intenta loguearse -> 400 "Cuenta de usuario desactivada"
+###     (como el login falla, no llega cookie nueva: la sesión de admin sigue activa)
+POST {{auth}}/token
+Content-Type: application/x-www-form-urlencoded
+
+username=juan&password=Juan1234!
+
+
+### 24. admin vuelve a ACTIVAR a juan -> 200 con "disabled": false
+POST {{auth}}/admin/usuarios/2/activar

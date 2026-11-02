@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+/* Tokens de diseño (Tailwind 4): cada --color-<nombre> genera las
+   utilidades bg-<nombre>, text-<nombre>, border-<nombre>, etc.
+   Cambiar un color acá lo cambia en toda la aplicación. */
+@theme {
+  --color-brand: #2563eb;
+  --color-brand-hover: #1d4ed8;
+  --color-secondary: #64748b;
+  --color-success: #059669;
+  --color-error: #dc2626;
+}

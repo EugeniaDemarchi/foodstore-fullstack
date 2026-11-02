@@ -1,0 +1,523 @@
+### =====================================================================
+### TP 9: ahora TODOS los endpoints piden sesión.
+### Ejecutar PRIMERO este login (como admin, para poder crear/editar/borrar).
+### REST Client guarda la cookie y la manda sola en los pedidos siguientes.
+POST http://localhost:8000/api/v1/auth/token
+Content-Type: application/x-www-form-urlencoded
+
+username=admin&password=Admin1234!
+
+### =====================================================================
+### TP Unidad 7 - Demostración de la API con REST Client (VS Code)
+### Requisito: servidor corriendo con
+###     .venv\Scripts\python.exe -m fastapi dev app/main.py
+### Ejecutar los bloques EN ORDEN (clic en "Send Request" sobre cada uno).
+### - Los ids se capturan solos con "# @name" -> no hay que editarlos.
+### - {{$timestamp}} hace únicos los nombres para poder re-ejecutar sin 409.
+### - Cada título indica el código HTTP esperado y la regla que demuestra.
+### =====================================================================
+
+@baseUrl = http://127.0.0.1:8000
+
+
+### =====================================================================
+### 0. HEALTH
+### =====================================================================
+
+### 0.1 El servidor responde  -> 200
+GET {{baseUrl}}/health/
+
+### 0.2 La base de datos responde  -> 200
+GET {{baseUrl}}/health/db
+
+
+### =====================================================================
+### 1. CATEGORÍAS - CRUD
+### =====================================================================
+
+### 1.1 Crear categoría A (con espacios: se guardan recortados)  -> 201
+# @name catA
+POST {{baseUrl}}/categorias/
+Content-Type: application/json
+
+{
+  "nombre": "  Pizzas {{$timestamp}}  ",
+  "descripcion": "Masas al horno de barro"
+}
+
+### 1.2 Crear categoría B  -> 201
+# @name catB
+POST {{baseUrl}}/categorias/
+Content-Type: application/json
+
+{
+  "nombre": "Promos {{$timestamp}}",
+  "descripcion": "Productos en promoción"
+}
+
+### 1.3 Crear categoría C sin descripción (RN-03: queda "")  -> 201
+# @name catC
+POST {{baseUrl}}/categorias/
+Content-Type: application/json
+
+{
+  "nombre": "Bebidas {{$timestamp}}"
+}
+
+### 1.4 Listar categorías paginado (respuesta {items, total, offset, limit})  -> 200
+GET {{baseUrl}}/categorias/?offset=0&limit=5
+
+### 1.5 Filtro por nombre, búsqueda parcial sin distinguir mayúsculas  -> 200
+GET {{baseUrl}}/categorias/?nombre=PIZZ
+
+### 1.6 Obtener categoría por id  -> 200
+GET {{baseUrl}}/categorias/{{catA.response.body.id}}
+
+### 1.7 Actualizar categoría C (PUT = reemplazo total; cambia updated_at)  -> 200
+PUT {{baseUrl}}/categorias/{{catC.response.body.id}}
+Content-Type: application/json
+
+{
+  "nombre": "Bebidas frías {{$timestamp}}",
+  "descripcion": "Gaseosas, aguas y jugos"
+}
+
+
+### =====================================================================
+### 2. CATEGORÍAS - ERRORES
+### =====================================================================
+
+### 2.1 Nombre solo con espacios (RN-01)  -> 422
+POST {{baseUrl}}/categorias/
+Content-Type: application/json
+
+{
+  "nombre": "    "
+}
+
+### 2.2 Nombre duplicado, aunque venga con espacios extra (RN-02)  -> 409
+POST {{baseUrl}}/categorias/
+Content-Type: application/json
+
+{
+  "nombre": "   {{catA.response.body.nombre}}   "
+}
+
+### 2.3 Editar C con el nombre de A (RN-02)  -> 409
+PUT {{baseUrl}}/categorias/{{catC.response.body.id}}
+Content-Type: application/json
+
+{
+  "nombre": "{{catA.response.body.nombre}}"
+}
+
+### 2.4 Actualizar categoría inexistente (RN-04)  -> 404
+PUT {{baseUrl}}/categorias/999999
+Content-Type: application/json
+
+{
+  "nombre": "No existe"
+}
+
+### 2.5 limit fuera de rango (protección de la base)  -> 422
+GET {{baseUrl}}/categorias/?limit=1000
+
+### 2.6 offset negativo  -> 422
+GET {{baseUrl}}/categorias/?offset=-5
+
+
+### =====================================================================
+### 3. PRODUCTOS - CRUD (HU-06)
+### =====================================================================
+
+### 3.1 Crear producto con 2 categorías: la PRIMERA queda como principal  -> 201
+# @name prod
+POST {{baseUrl}}/productos/
+Content-Type: application/json
+
+{
+  "nombre": "Pizza Napolitana",
+  "descripcion": "Muzzarella, tomate en rodajas y ajo",
+  "precio_base": 9500.50,
+  "imagenes_url": [
+    "https://ejemplo.com/img/napolitana-1.jpg",
+    "https://ejemplo.com/img/napolitana-2.jpg"
+  ],
+  "disponible": true,
+  "categoria_ids": [
+    {{catA.response.body.id}},
+    {{catB.response.body.id}}
+  ]
+}
+
+### 3.2 Crear producto con precio 0 y sin imágenes (RN-07, RN-08, RN-09)  -> 201
+# @name prod2
+POST {{baseUrl}}/productos/
+Content-Type: application/json
+
+{
+  "nombre": "Agua de cortesía",
+  "precio_base": 0,
+  "categoria_ids": [{{catC.response.body.id}}]
+}
+
+### 3.3 Listar productos paginado (con categorías anidadas)  -> 200
+GET {{baseUrl}}/productos/?offset=0&limit=10
+
+### 3.4 Filtro por nombre  -> 200
+GET {{baseUrl}}/productos/?nombre=napo
+
+### 3.5 Obtener producto por id  -> 200
+GET {{baseUrl}}/productos/{{prod.response.body.id}}
+
+### 3.6 Actualizar SIN categoria_ids: las categorías quedan como estaban  -> 200
+PUT {{baseUrl}}/productos/{{prod.response.body.id}}
+Content-Type: application/json
+
+{
+  "nombre": "Pizza Napolitana Especial",
+  "descripcion": "Con albahaca fresca",
+  "precio_base": 10200,
+  "imagenes_url": ["https://ejemplo.com/img/napolitana-especial.jpg"],
+  "disponible": true
+}
+
+### 3.7 Actualizar CON categoria_ids: reemplaza TODAS las asociaciones (RN-12)  -> 200
+PUT {{baseUrl}}/productos/{{prod.response.body.id}}
+Content-Type: application/json
+
+{
+  "nombre": "Pizza Napolitana Especial",
+  "precio_base": 10200,
+  "categoria_ids": [{{catB.response.body.id}}]
+}
+
+
+### =====================================================================
+### 4. PRODUCTOS - ERRORES
+### =====================================================================
+
+### 4.1 Falta categoria_ids (RN-19)  -> 422
+POST {{baseUrl}}/productos/
+Content-Type: application/json
+
+{
+  "nombre": "Sin categorías",
+  "precio_base": 100
+}
+
+### 4.2 categoria_ids vacío (RN-19)  -> 422
+POST {{baseUrl}}/productos/
+Content-Type: application/json
+
+{
+  "nombre": "Lista vacía",
+  "precio_base": 100,
+  "categoria_ids": []
+}
+
+### 4.3 Precio negativo (RN-07)  -> 422
+POST {{baseUrl}}/productos/
+Content-Type: application/json
+
+{
+  "nombre": "Precio inválido",
+  "precio_base": -100,
+  "categoria_ids": [{{catA.response.body.id}}]
+}
+
+### 4.4 Nombre solo con espacios (RN-06)  -> 422
+POST {{baseUrl}}/productos/
+Content-Type: application/json
+
+{
+  "nombre": "   ",
+  "precio_base": 100,
+  "categoria_ids": [{{catA.response.body.id}}]
+}
+
+### 4.5 Una categoría no existe (RN-11): se rechaza TODO, no se crea nada (RN-17)  -> 404
+POST {{baseUrl}}/productos/
+Content-Type: application/json
+
+{
+  "nombre": "Con categoría fantasma",
+  "precio_base": 100,
+  "categoria_ids": [{{catA.response.body.id}}, 999999]
+}
+
+### 4.6 PUT con categoria_ids vacío  -> 422
+PUT {{baseUrl}}/productos/{{prod.response.body.id}}
+Content-Type: application/json
+
+{
+  "nombre": "Pizza",
+  "precio_base": 100,
+  "categoria_ids": []
+}
+
+### 4.7 Producto inexistente (RN-10)  -> 404
+GET {{baseUrl}}/productos/999999
+
+
+### =====================================================================
+### 5. RELACIÓN N:M - SOLO CONSULTA (HU-07, RN-13, RN-22)
+### =====================================================================
+
+### 5.1 Categorías de un producto (con es_principal)  -> 200
+GET {{baseUrl}}/productos/{{prod.response.body.id}}/categorias
+
+### 5.2 Productos de una categoría  -> 200
+GET {{baseUrl}}/categorias/{{catB.response.body.id}}/productos
+
+### 5.3 Categorías de un producto inexistente  -> 404
+GET {{baseUrl}}/productos/999999/categorias
+
+### 5.4 Productos de una categoría inexistente  -> 404
+GET {{baseUrl}}/categorias/999999/productos
+
+
+### =====================================================================
+### 6. BORRADO LÓGICO E INTEGRIDAD (RN-05, RN-14)
+### =====================================================================
+
+### 6.1 Eliminar categoría B, que tiene un producto activo (RN-05)  -> 409
+DELETE {{baseUrl}}/categorias/{{catB.response.body.id}}
+
+### 6.2 Eliminar el producto (borrado lógico)  -> 204
+DELETE {{baseUrl}}/productos/{{prod.response.body.id}}
+
+### 6.3 El producto ya no se encuentra  -> 404
+GET {{baseUrl}}/productos/{{prod.response.body.id}}
+
+### 6.4 Tampoco aparece en su categoría (cascada lógica, RN-14)  -> 200
+GET {{baseUrl}}/categorias/{{catB.response.body.id}}/productos
+
+### 6.5 Ahora sí se puede eliminar la categoría B  -> 204
+DELETE {{baseUrl}}/categorias/{{catB.response.body.id}}
+
+### 6.6 Eliminarla otra vez: ya no existe para la API  -> 404
+DELETE {{baseUrl}}/categorias/{{catB.response.body.id}}
+
+### 6.7 ...pero sigue en la base: se ve con incluir_inactivos (deleted_at cargado)  -> 200
+GET {{baseUrl}}/categorias/?nombre=Promos&incluir_inactivos=true
+
+### 6.8 El producto borrado también se ve con incluir_inactivos  -> 200
+GET {{baseUrl}}/productos/?nombre=Napolitana&incluir_inactivos=true
+
+### 6.9 El nombre de una categoría borrada se puede reutilizar  -> 201
+POST {{baseUrl}}/categorias/
+Content-Type: application/json
+
+{
+  "nombre": "{{catB.response.body.nombre}}"
+}
+
+### 6.10 No se puede asignar una categoría borrada a un producto (RN-11)  -> 404
+POST {{baseUrl}}/productos/
+Content-Type: application/json
+
+{
+  "nombre": "Producto nuevo",
+  "precio_base": 500,
+  "categoria_ids": [{{catB.response.body.id}}]
+}
+
+
+### =====================================================================
+### 7. UNIDADES DE MEDIDA - CATÁLOGO DE SOLO LECTURA (cargado por seed.py)
+### =====================================================================
+
+### 7.1 Listar unidades de medida (las 7 del seed)  -> 200
+GET {{baseUrl}}/unidades-medida/
+
+### 7.2 Obtener una unidad (2 = gramo)  -> 200
+GET {{baseUrl}}/unidades-medida/2
+
+### 7.3 Unidad inexistente  -> 404
+GET {{baseUrl}}/unidades-medida/999
+
+### 7.4 El catálogo NO acepta escritura (no existe el endpoint)  -> 405
+POST {{baseUrl}}/unidades-medida/
+Content-Type: application/json
+
+{
+  "nombre": "tonelada",
+  "simbolo": "t",
+  "tipo": "masa"
+}
+
+
+### =====================================================================
+### 8. INGREDIENTES - CRUD
+### =====================================================================
+
+### 8.1 Crear ingrediente medido en gramos  -> 201
+# @name ingHarina
+POST {{baseUrl}}/ingredientes/
+Content-Type: application/json
+
+{
+  "nombre": "Harina 000 {{$timestamp}}",
+  "descripcion": "Harina de trigo",
+  "unidad_medida_id": 2
+}
+
+### 8.2 Crear ingrediente medido en mililitros  -> 201
+# @name ingAceite
+POST {{baseUrl}}/ingredientes/
+Content-Type: application/json
+
+{
+  "nombre": "Aceite de oliva {{$timestamp}}",
+  "unidad_medida_id": 4
+}
+
+### 8.3 Crear ingrediente medido en piezas  -> 201
+# @name ingHuevo
+POST {{baseUrl}}/ingredientes/
+Content-Type: application/json
+
+{
+  "nombre": "Huevo {{$timestamp}}",
+  "unidad_medida_id": 5
+}
+
+### 8.4 Listar ingredientes paginado  -> 200
+GET {{baseUrl}}/ingredientes/?offset=0&limit=10
+
+### 8.5 Obtener ingrediente (incluye su unidad de medida)  -> 200
+GET {{baseUrl}}/ingredientes/{{ingHarina.response.body.id}}
+
+### 8.6 Actualizar ingrediente  -> 200
+PUT {{baseUrl}}/ingredientes/{{ingAceite.response.body.id}}
+Content-Type: application/json
+
+{
+  "nombre": "Aceite de oliva extra virgen {{$timestamp}}",
+  "descripcion": "Primera prensada en frío",
+  "unidad_medida_id": 4
+}
+
+### 8.7 Nombre duplicado  -> 409
+POST {{baseUrl}}/ingredientes/
+Content-Type: application/json
+
+{
+  "nombre": "{{ingHarina.response.body.nombre}}",
+  "unidad_medida_id": 2
+}
+
+### 8.8 Unidad de medida inexistente  -> 404
+POST {{baseUrl}}/ingredientes/
+Content-Type: application/json
+
+{
+  "nombre": "Sal {{$timestamp}}",
+  "unidad_medida_id": 999
+}
+
+### 8.9 Ingrediente inexistente  -> 404
+GET {{baseUrl}}/ingredientes/999999
+
+
+### =====================================================================
+### 9. PRODUCTO CON INGREDIENTES (HU-06, HU-07, RN-20, RN-21)
+### =====================================================================
+
+### 9.1 Crear producto CON ingredientes (opcionales, con cantidad)  -> 201
+# @name prodIng
+POST {{baseUrl}}/productos/
+Content-Type: application/json
+
+{
+  "nombre": "Fugazzeta {{$timestamp}}",
+  "precio_base": 11000,
+  "categoria_ids": [{{catA.response.body.id}}],
+  "ingredientes": [
+    { "ingrediente_id": {{ingHarina.response.body.id}}, "cantidad": 500 },
+    { "ingrediente_id": {{ingAceite.response.body.id}}, "cantidad": 30 }
+  ]
+}
+
+### 9.2 Ingredientes del producto (con cantidad y unidad)  -> 200
+GET {{baseUrl}}/productos/{{prodIng.response.body.id}}/ingredientes
+
+### 9.3 PUT sin "ingredientes": quedan como estaban  -> 200
+PUT {{baseUrl}}/productos/{{prodIng.response.body.id}}
+Content-Type: application/json
+
+{
+  "nombre": "Fugazzeta rellena {{$timestamp}}",
+  "precio_base": 12500
+}
+
+### 9.4 PUT con "ingredientes": reemplaza TODOS (RN-21)  -> 200
+PUT {{baseUrl}}/productos/{{prodIng.response.body.id}}
+Content-Type: application/json
+
+{
+  "nombre": "Fugazzeta rellena {{$timestamp}}",
+  "precio_base": 12500,
+  "ingredientes": [
+    { "ingrediente_id": {{ingHarina.response.body.id}}, "cantidad": 600 },
+    { "ingrediente_id": {{ingHuevo.response.body.id}}, "cantidad": 2 }
+  ]
+}
+
+### 9.5 Verificar el reemplazo: harina 600 g y 2 huevos, sin aceite  -> 200
+GET {{baseUrl}}/productos/{{prodIng.response.body.id}}/ingredientes
+
+### 9.6 Ingrediente inexistente en el producto  -> 404
+POST {{baseUrl}}/productos/
+Content-Type: application/json
+
+{
+  "nombre": "Producto con ingrediente fantasma",
+  "precio_base": 100,
+  "categoria_ids": [{{catA.response.body.id}}],
+  "ingredientes": [{ "ingrediente_id": 999999, "cantidad": 1 }]
+}
+
+### 9.7 Cantidad 0  -> 422
+POST {{baseUrl}}/productos/
+Content-Type: application/json
+
+{
+  "nombre": "Cantidad inválida",
+  "precio_base": 100,
+  "categoria_ids": [{{catA.response.body.id}}],
+  "ingredientes": [{ "ingrediente_id": {{ingHarina.response.body.id}}, "cantidad": 0 }]
+}
+
+### 9.8 Ingrediente repetido en el mismo producto  -> 422
+POST {{baseUrl}}/productos/
+Content-Type: application/json
+
+{
+  "nombre": "Ingrediente repetido",
+  "precio_base": 100,
+  "categoria_ids": [{{catA.response.body.id}}],
+  "ingredientes": [
+    { "ingrediente_id": {{ingHarina.response.body.id}}, "cantidad": 1 },
+    { "ingrediente_id": {{ingHarina.response.body.id}}, "cantidad": 2 }
+  ]
+}
+
+### 9.9 Ingredientes de un producto inexistente  -> 404
+GET {{baseUrl}}/productos/999999/ingredientes
+
+### 9.10 Eliminar un ingrediente que usa un producto activo  -> 409
+DELETE {{baseUrl}}/ingredientes/{{ingHarina.response.body.id}}
+
+### 9.11 Eliminar un ingrediente que no usa nadie (borrado lógico)  -> 204
+DELETE {{baseUrl}}/ingredientes/{{ingAceite.response.body.id}}
+
+### 9.12 Ya no existe para la API  -> 404
+GET {{baseUrl}}/ingredientes/{{ingAceite.response.body.id}}
+
+### 9.13 Borrar el producto libera a sus ingredientes  -> 204
+DELETE {{baseUrl}}/productos/{{prodIng.response.body.id}}
+
+### 9.14 Ahora la harina sí se puede eliminar  -> 204
+DELETE {{baseUrl}}/ingredientes/{{ingHarina.response.body.id}}
